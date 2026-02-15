@@ -1,3 +1,8 @@
+console.log(' [BOOT] Starting... ENV Check:');
+console.log(' [BOOT] TELEGRAM_BOT_TOKEN:', process.env.TELEGRAM_BOT_TOKEN ? '✅ (Present)' : '❌ (MISSING)');
+console.log(' [BOOT] GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? '✅ (Present)' : '❌ (MISSING)');
+console.log(' [BOOT] WOLFSFERA_CMS_SECRET:', process.env.WOLFSFERA_CMS_SECRET ? '✅ (Present)' : '❌ (MISSING)');
+
 import { config } from './config';
 import { fetchAllBinanceArticles, BinanceArticle } from './watcher/binance-rss';
 import { scrapeArticleBody } from './watcher/binance-scraper';
