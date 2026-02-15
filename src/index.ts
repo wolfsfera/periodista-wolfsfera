@@ -16,6 +16,8 @@ import { postTwitterThread, testTwitterConnection } from './herald/twitter-clien
 import { postLinkedIn, testLinkedInConnection } from './herald/linkedin-client';
 import { createCmsStub } from './cms/create-stub';
 
+import http from 'http';
+
 /**
  * 🤖 WOLFSFERA ROBOT PERIODISTA
  * 
@@ -26,6 +28,15 @@ import { createCmsStub } from './cms/create-stub';
  * 4. Distributes to X, Telegram, LinkedIn (The Herald)
  * 5. Creates stub articles on wolfsfera.com (CMS)
  */
+
+// DUMMY SERVER FOR RAILWAY/RENDER (Keep Alive)
+const port = process.env.PORT || 8080;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Wolfsfera Robot is Active 🐺');
+}).listen(port, () => {
+    console.log(`[BOOT] 👂 Health check server listening on port ${port}`);
+});
 
 class RobotPeriodista {
     private detector: ChangeDetector;
