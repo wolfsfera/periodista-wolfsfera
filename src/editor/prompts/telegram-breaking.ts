@@ -1,4 +1,4 @@
-import { BinanceArticle } from '../watcher/binance-rss';
+import { BinanceArticle } from '../../watcher/binance-rss';
 
 /**
  * Generate a Telegram "Breaking News" message prompt
