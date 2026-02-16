@@ -7,6 +7,7 @@ import { config } from './config';
 import { fetchAllBinanceArticles, BinanceArticle } from './watcher/binance-rss';
 import { scrapeArticleBody } from './watcher/binance-scraper';
 import { ChangeDetector } from './watcher/change-detector';
+import { EmailTrigger } from './watcher/email-trigger';
 import { GeminiProcessor } from './editor/gemini-processor';
 import { scoreRelevance } from './editor/relevance-filter';
 import { ImageProcessor } from './visualizer/image-processor';
@@ -43,6 +44,7 @@ class RobotPeriodista {
     private editor: GeminiProcessor;
     private visualizer: ImageProcessor;
     private queue: PublicationQueue;
+    private emailTrigger: EmailTrigger; // Added
     private running = false;
     private cycleCount = 0;
 
@@ -51,6 +53,7 @@ class RobotPeriodista {
         this.editor = new GeminiProcessor();
         this.visualizer = new ImageProcessor();
         this.queue = new PublicationQueue();
+        this.emailTrigger = new EmailTrigger(); // Added
     }
 
     /**
@@ -69,6 +72,7 @@ class RobotPeriodista {
         console.log(`   X/Twitter: ${config.xEnabled ? '✅ ACTIVE' : '⏸️  Waiting for API keys'}`);
         console.log(`   LinkedIn: ${config.linkedinEnabled ? '✅ ACTIVE' : '⏸️  Waiting for API keys'}`);
         console.log(`   CMS Stubs: ${config.cmsEnabled ? '✅ ACTIVE' : '⏸️  Waiting for secret'}`);
+        console.log(`   Email Trigger: ${config.emailEnabled ? '✅ ACTIVE' : '❌ Not configured'}`); // Added email log
 
         // Test connections
         await this.testConnections();
@@ -98,14 +102,30 @@ class RobotPeriodista {
         console.log(`\n${'─'.repeat(50)}`);
         console.log(`[Robot] 🔄 Cycle #${this.cycleCount} @ ${new Date().toLocaleTimeString()}`);
 
+        const allArticles: BinanceArticle[] = [];
+
         // 1. FETCH articles from Binance
-        const allArticles = await fetchAllBinanceArticles();
-        if (allArticles.length === 0) {
-            console.log('[Robot] 📭 No articles found');
-            return;
+        try {
+            const binanceArticles = await fetchAllBinanceArticles();
+            allArticles.push(...binanceArticles);
+        } catch (e) {
+            console.error('[Robot] ⚠️ Binance check failed:', e);
         }
 
-        // 2. FILTER to only new articles
+        // 2. Check Email (User Content - "La Bomba")
+        if (config.emailEnabled) {
+            try {
+                const emailArticles = await this.emailTrigger.checkEmails();
+                if (emailArticles.length > 0) {
+                    console.log(`[Robot] 💣 Found ${emailArticles.length} USER articles via Email!`);
+                    allArticles.push(...emailArticles);
+                }
+            } catch (e) {
+                console.error('[Robot] ⚠️ Email check failed:', e);
+            }
+        }
+
+        // 3. FILTER to only new articles
         const newArticles = this.detector.filterNew(allArticles);
         if (newArticles.length === 0) {
             console.log('[Robot] 📭 No new articles');
@@ -114,7 +134,7 @@ class RobotPeriodista {
 
         console.log(`[Robot] 🆕 ${newArticles.length} new article(s) found!`);
 
-        // 3. PROCESS each new article
+        // 4. PROCESS each new article
         for (const article of newArticles) {
             await this.processArticle(article);
         }

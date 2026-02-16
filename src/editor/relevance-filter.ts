@@ -20,6 +20,19 @@ export interface RelevanceScore {
  */
 export async function scoreRelevance(article: BinanceArticle): Promise<RelevanceScore> {
     try {
+        // [BYPASS] User content always gets max score
+        if (article.category === 'user-content') {
+            const result: RelevanceScore = {
+                score: 11,
+                publishToX: true,
+                publishToLinkedin: true,
+                reason: 'Exclusive user content (La Bomba)',
+                category: 'technical', // or whatever
+            };
+            console.log(`[Filter] 🚨 USER CONTENT! Score: ${result.score}/10 | Publishing EVERYWHERE`);
+            return result;
+        }
+
         const genAI = new GoogleGenerativeAI(config.geminiApiKey);
         const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 

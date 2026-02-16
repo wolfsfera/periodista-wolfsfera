@@ -36,9 +36,17 @@ export const config = {
     dataDir: path.resolve(__dirname, '../data'),
     seenFile: path.resolve(__dirname, '../data/seen.json'),
 
+    // Email Trigger
+    emailUser: process.env.EMAIL_USER || '',
+    emailPass: process.env.EMAIL_PASS || '',
+    emailHost: process.env.EMAIL_HOST || 'imap.gmail.com',
+    emailPort: parseInt(process.env.EMAIL_PORT || '993'),
+    adminEmail: process.env.ADMIN_EMAIL || '', // To filter sender
+
     // Feature flags
     get telegramEnabled() { return !!this.telegramBotToken && !!this.telegramChannelId; },
     get xEnabled() { return !!this.xApiKey && !!this.xAccessToken; },
     get linkedinEnabled() { return !!this.linkedinAccessToken; },
     get cmsEnabled() { return !!this.wolfsferaCmsSecret; },
+    get emailEnabled() { return !!this.emailUser && !!this.emailPass; },
 };
