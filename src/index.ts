@@ -15,7 +15,7 @@ import { PublicationQueue } from './herald/queue';
 import { sendTelegramMessage, testTelegramConnection } from './herald/telegram-bot';
 import { postTwitterThread, testTwitterConnection } from './herald/twitter-client';
 import { postLinkedIn, testLinkedInConnection } from './herald/linkedin-client';
-import { createCmsStub } from './cms/create-stub';
+import { createCmsStub, generateSlug } from './cms/create-stub';
 
 import http from 'http';
 
@@ -169,11 +169,15 @@ class RobotPeriodista {
         // Score relevance to decide which platforms get this article
         const relevance = await scoreRelevance(article);
 
-        // Create CMS stub
-        const stubUrl = await createCmsStub(article);
+        // 2. Generate Slug & URL (Proactive)
+        const slug = generateSlug(article.title);
+        const stubUrl = `${config.wolfsferaUrl}/news/${slug}`;
 
-        // Generate AI content for all platforms
+        // 3. Generate AI content (including Web Article)
         const content = await this.editor.processArticle(article, stubUrl);
+
+        // 4. Create CMS Article with FULL content
+        await createCmsStub(article, content.webArticle?.html, slug);
 
         // Process image
         const images = await this.visualizer.processImage(

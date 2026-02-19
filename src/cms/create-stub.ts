@@ -5,9 +5,9 @@ import { BinanceArticle } from '../watcher/binance-rss';
  * Create a stub article on wolfsfera.com via the CMS API
  * Returns the URL of the created stub for use in social media CTAs
  */
-export async function createCmsStub(article: BinanceArticle): Promise<string> {
-    // Generate a slug from the title
-    const slug = generateSlug(article.title);
+export async function createCmsStub(article: BinanceArticle, aiContent?: string, preSlug?: string): Promise<string> {
+    // Generate a slug if not provided
+    const slug = preSlug || generateSlug(article.title);
     const stubUrl = `${config.wolfsferaUrl}/news/${slug}`;
 
     // If CMS is not configured, return a fallback URL
@@ -17,7 +17,7 @@ export async function createCmsStub(article: BinanceArticle): Promise<string> {
     }
 
     try {
-        console.log(`[CMS] 📝 Creating stub: /news/${slug}`);
+        console.log(`[CMS] 📝 Creating article: /news/${slug}`);
 
         const response = await fetch(`${config.wolfsferaUrl}/api/news`, {
             method: 'POST',
@@ -29,13 +29,14 @@ export async function createCmsStub(article: BinanceArticle): Promise<string> {
                 title: article.title,
                 slug,
                 summary: article.summary,
-                body: article.fullBody?.slice(0, 500) || article.summary,
+                content: aiContent || article.fullBody || article.summary, // Use AI content if available
                 sourceUrl: article.url,
                 imageUrl: article.imageUrl || '',
                 category: article.category,
                 publishedAt: article.date,
             }),
         });
+
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -55,7 +56,7 @@ export async function createCmsStub(article: BinanceArticle): Promise<string> {
 /**
  * Generate a URL-safe slug from a title
  */
-function generateSlug(title: string): string {
+export function generateSlug(title: string): string {
     return title
         .toLowerCase()
         .normalize('NFD')

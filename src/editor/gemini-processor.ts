@@ -4,6 +4,7 @@ import { BinanceArticle } from '../watcher/binance-rss';
 import { buildTwitterThreadPrompt } from './prompts/twitter-thread';
 import { buildTelegramPrompt, buildTelegramButtons } from './prompts/telegram-breaking';
 import { buildLinkedInPrompt } from './prompts/linkedin-analysis';
+import { buildWebArticlePrompt } from './prompts/web-article';
 
 export interface ProcessedContent {
     article: BinanceArticle;
@@ -17,6 +18,9 @@ export interface ProcessedContent {
     };
     linkedin?: {
         post: string;
+    };
+    webArticle?: {
+        html: string;
     };
 }
 
@@ -57,6 +61,11 @@ export class GeminiProcessor {
 
         if (config.linkedinEnabled) {
             tasks.push(this.generateLinkedIn(article, stubUrl).then(l => { result.linkedin = l; }));
+        }
+
+        // Always generate Web Article if CMS is enabled (or just always for future use)
+        if (config.cmsEnabled) {
+            tasks.push(this.generateWebArticle(article).then(w => { result.webArticle = w; }));
         }
 
         // If no platforms enabled, still generate Telegram content for preview
@@ -140,6 +149,26 @@ export class GeminiProcessor {
         } catch (error) {
             console.error('[Editor] ❌ LinkedIn generation error:', error);
             return { post: `${article.title}\n\n${article.summary}\n\nAnálisis completo: ${stubUrl}\n\n#Blockchain #Crypto` };
+        }
+    }
+
+    /**
+     * Generate Full Web Article (HTML)
+     */
+    private async generateWebArticle(article: BinanceArticle) {
+        try {
+            const prompt = buildWebArticlePrompt(article);
+            const response = await this.model.generateContent(prompt);
+            let html = response.response.text();
+
+            // Clean markdown code blocks if any
+            html = html.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
+
+            console.log(`[Editor] 🌐 Web Article: ${html.length} chars`);
+            return { html };
+        } catch (error) {
+            console.error('[Editor] ❌ Web Article generation error:', error);
+            return { html: `<p>${article.summary}</p><p>Fuente: <a href="${article.url}">Binance</a></p>` };
         }
     }
 }
