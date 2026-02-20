@@ -57,7 +57,7 @@ export async function createCmsStub(article: BinanceArticle, aiContent?: string,
  * Generate a URL-safe slug from a title
  */
 export function generateSlug(title: string): string {
-    return title
+    const base = title
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
@@ -65,5 +65,8 @@ export function generateSlug(title: string): string {
         .replace(/\s+/g, '-')             // Spaces to hyphens
         .replace(/-+/g, '-')              // Collapse multiple hyphens
         .replace(/^-|-$/g, '')            // Trim hyphens
-        .slice(0, 80);                     // Max length
+        .slice(0, 60);                     // Max length short to allow hash
+
+    const randomHash = Math.random().toString(36).substring(2, 8);
+    return `${base}-${randomHash}`;
 }

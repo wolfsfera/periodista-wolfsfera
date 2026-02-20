@@ -41,13 +41,17 @@ export async function sendTelegramMessage(content: ProcessedContent, imagePath?:
             // Telegram limits photo captions to 1024 characters
             let caption = content.telegram.message;
             if (caption.length > 1024) {
-                console.warn(`[Telegram] ⚠️ Caption too long (${caption.length}), truncating to 1024 chars`);
-                caption = caption.substring(0, 1000) + '...\n\n🐺 [Mensaje truncado]';
+                console.warn(`[Telegram] ⚠️ Caption too long (${caption.length}), truncating safely`);
+                // Strip HTML tags if we need to truncate to avoid broken tags
+                const plainText = caption.replace(/<[^>]*>?/gm, '');
+                caption = plainText.substring(0, 1000) + '...\n\n🐺 [Mensaje truncado]';
+                // If we strip HTML, we can't use parse_mode HTML safely without losing formatting, 
+                // but for a truncated long message it's better to be safe. We'll just remove parse_mode below.
             }
 
             await telegramBot.sendPhoto(channelId, fs.createReadStream(imagePath) as any, {
                 caption: caption,
-                parse_mode: 'HTML',
+                parse_mode: caption.length > 1024 ? undefined : 'HTML',
                 reply_markup: content.telegram.buttons,
             });
             console.log('[Telegram] ✅ Sent with image');
