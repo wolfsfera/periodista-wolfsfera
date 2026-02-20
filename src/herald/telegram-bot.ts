@@ -72,6 +72,29 @@ export async function sendTelegramMessage(content: ProcessedContent, imagePath?:
             await new Promise(r => setTimeout(r, retryAfter * 1000));
             return sendTelegramMessage(content, imagePath); // Retry once
         }
+
+        if (error.response?.body?.error_code === 400) {
+            console.warn(`[Telegram] ⚠️ Bad Request (Parse Error). Retrying in PLAIN TEXT...`);
+            try {
+                const plainText = content.telegram.message.replace(/<[^>]*>?/gm, '');
+
+                if (imagePath && fs.existsSync(imagePath)) {
+                    await telegramBot.sendPhoto(channelId, fs.createReadStream(imagePath) as any, {
+                        caption: plainText.substring(0, 1000),
+                        reply_markup: content.telegram.buttons,
+                    });
+                } else {
+                    await telegramBot.sendMessage(channelId, plainText.substring(0, 4000), {
+                        reply_markup: content.telegram.buttons,
+                    });
+                }
+                console.log('[Telegram] ✅ Sent plain text fallback successfully');
+                return;
+            } catch (fallbackErr) {
+                console.error('[Telegram] ❌ Fallback failed too:', fallbackErr);
+            }
+        }
+
         throw error;
     }
 }
