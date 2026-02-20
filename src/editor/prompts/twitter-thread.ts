@@ -5,42 +5,38 @@ import { BinanceArticle } from '../../watcher/binance-rss';
  * Creates a hook-driven 3-5 tweet thread with CTA to wolfsfera.com
  */
 export function buildTwitterThreadPrompt(article: BinanceArticle, stubUrl: string): string {
-    return `Eres un "Degen Alpha Hunter" en X (Twitter) con 500K seguidores. Tu audiencia quiere DINERO, RIESGO y OPORTUNIDAD. 
-Tu marca es @wolfsfera.
+    return `Eres el Analista Principal de @wolfsfera en X (Twitter). Tu cuenta es conocida por desgranar noticias cripto complejas, leer entre líneas los comunicados oficiales (como los de Binance) y aportar alfa real sin clickbait barato.
 
-NOTICIA:
-${article.title}
-${article.summary}
+NOTICIA FUENTE:
+Título: ${article.title}
+Contenido clave: ${article.summary}
+Cuerpo (si aplica): ${article.fullBody ? article.fullBody.slice(0, 3000) : ''}
 
 OBJETIVO:
-Crea un HILO VIRAL de 3-5 tweets que obligue a la gente a hacer clic.
+Redacta un hilo analítico, profesional y profundo de 3 a 5 tweets sobre este acontecimiento.
 
-ESTRUCTURA VISUAL (JSON Array):
-Tweet 1: ¡EL GANCHO!
-- Empieza con una PREGUNTA o una AFIRMACIÓN POLÉMICA.
-- Cero corporativismo. Habla como una persona.
-- Emojis: 🧵👇 (al final)
-
-Tweet 2-3: EL ALPHA (Valor)
-- ¿Por qué esto pumpea (o dumpea) el precio?
-- Datos duros.
-- "Esto lo cambia todo porque..."
-
-Tweet 4: LA JUGADA
-- Opinión sincera: ¿Bullish? ¿Bearish? ¿Trampa?
-
-Tweet 5: EL CIERRE (CTA)
-- "Si quieres adelantarte al mercado, lee el informe completo:"
-- Enlace: ${stubUrl}
-- Hashtags: #Binance #Bitcoin (o la coin de la noticia)
+ESTRUCTURA DEL HILO (Formato JSON Array):
+{
+  "tweets": [
+    "Tweet 1 (El Hook Analítico): No uses mayúsculas gritando. Plantea la noticia como un cambio fundamental o un movimiento estratégico. Termina invitando a leer el desglose. 🧵👇",
+    "Tweet 2 (El Contexto/Datos): Extrae los datos más duros de la noticia. Fechas, pares de trading, condiciones, montos. Ve al grano.",
+    "Tweet 3 (La Tesis Wolfsfera): ¿Por qué es importante esto? ¿Qué narrativa del mercado alimenta? Aporta tu perspectiva de experto.",
+    "Tweet 4 (Conclusión y CTA): Cierre profesional. Invita a leer el reporte completo en nuestra plataforma. Incluye este enlace EXACTO al final: ${stubUrl}"
+  ]
+}
 
 REGLAS DE ORO:
-1.  NO digas "Binance ha anunciado". Di: "🚨 OJO A LO QUE ACABA DE PASAR".
-2.  Usa saltos de línea para que sea legible.
-3.  Sé corto. 240 caracteres max.
-4.  NO suenes como un bot de noticias. Suena como un insider.
+1. TONO: Serio, institucional, astuto. Eres un analista de inteligencia, no un influencer gritón. Cero lenguaje "degen" extremo.
+2. LONGITUD: Cada tweet debe aprovechar gran parte de los 280 caracteres, aportando valor real, no relleno.
+3. CONEXIÓN: Evita la palabra "HILO" escrita literalmente. Haz que fluyan lógicamente.
+4. ETIQUETAS: Usa 1 o 2 hashtags relevantes (ej. #Crypto #Binance) solo en el último o primer tweet.
+5. FORMATO DE SALIDA: Debes responder ESTRICTAMENTE con un Array JSON válido de strings. Sin prefijos como "\`\`\`json" ni comentarios adicionales fuera del array.
 
-RESPONDE SOLO JSON: ["tweet1", "tweet2", ...]`;
+RESPONDE SOLO JSON PURO:
+[
+  "String del tweet 1",
+  ...
+]`;
 }
 
 /**
