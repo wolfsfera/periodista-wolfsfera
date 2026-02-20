@@ -38,8 +38,15 @@ export async function sendTelegramMessage(content: ProcessedContent, imagePath?:
     try {
         // Send with image if available
         if (imagePath && fs.existsSync(imagePath)) {
+            // Telegram limits photo captions to 1024 characters
+            let caption = content.telegram.message;
+            if (caption.length > 1024) {
+                console.warn(`[Telegram] ⚠️ Caption too long (${caption.length}), truncating to 1024 chars`);
+                caption = caption.substring(0, 1000) + '...\n\n🐺 [Mensaje truncado]';
+            }
+
             await telegramBot.sendPhoto(channelId, fs.createReadStream(imagePath) as any, {
-                caption: content.telegram.message,
+                caption: caption,
                 parse_mode: 'HTML',
                 reply_markup: content.telegram.buttons,
             });
