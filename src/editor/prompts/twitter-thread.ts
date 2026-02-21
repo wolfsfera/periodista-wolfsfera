@@ -25,7 +25,8 @@ REGLAS DE ORO:
 1. BREVEDAD: Ve directo al grano.
 2. TONO: Institucional, astuto, "hedge fund desk".
 3. ESTRUCTURA: Solo 1 o 2 tweets MÁXIMO en el array.
-4. FORMATO: Responde ESTRICTAMENTE con un Array JSON válido de strings. Sin \`\`\`json ni comentarios fuera del array.
+4. URl: No modifiques, no recortes y no reemplaces la URL por puntos suspensivos. Usa EXACTAMENTE: ${stubUrl}
+5. FORMATO: Responde ESTRICTAMENTE con un Array JSON válido de strings. Sin \`\`\`json ni comentarios.
 
 RESPONDE SOLO JSON PURO:
 [
