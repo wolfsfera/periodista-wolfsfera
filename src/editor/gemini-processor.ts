@@ -94,9 +94,10 @@ export class GeminiProcessor {
             const thread: string[] = JSON.parse(cleanText);
 
             // Validate tweet lengths
+            // Increase raw length limit to 500 to account for long URLs that X will compress to 23 chars via t.co
             const validThread = thread
                 .filter(t => typeof t === 'string' && t.length > 0)
-                .map(t => t.length > 280 ? t.slice(0, 277) + '...' : t);
+                .map(t => t.length > 500 ? t.slice(0, 497) + '...' : t);
 
             console.log(`[Editor] 🐦 Twitter thread: ${validThread.length} tweets`);
             return { thread: validThread };
