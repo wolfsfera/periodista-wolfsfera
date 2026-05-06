@@ -20,16 +20,20 @@ export interface RelevanceScore {
  */
 export async function scoreRelevance(article: BinanceArticle): Promise<RelevanceScore> {
     try {
-        // [BYPASS] User content always gets max score
+        // User content from email is no longer force-published everywhere.
+        // Only urgent intents go to X/LinkedIn; the rest stays in Telegram/Web.
         if (article.category === 'user-content') {
+            const urgent = /\b(breaking|urgente|alerta|ultima hora)\b/i.test(article.title);
             const result: RelevanceScore = {
-                score: 11,
-                publishToX: true,
-                publishToLinkedin: true,
-                reason: 'Exclusive user content (La Bomba)',
-                category: 'technical', // or whatever
+                score: urgent ? 8 : 6,
+                publishToX: urgent,
+                publishToLinkedin: urgent,
+                reason: urgent
+                    ? 'User content marked as urgent'
+                    : 'User content default: web/telegram only',
+                category: urgent ? 'regulatory' : 'minor',
             };
-            console.log(`[Filter] 🚨 USER CONTENT! Score: ${result.score}/10 | Publishing EVERYWHERE`);
+            console.log(`[Filter] 🧭 USER CONTENT score ${result.score}/10 | X: ${result.publishToX ? '✅' : '❌'}`);
             return result;
         }
 

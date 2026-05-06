@@ -1,5 +1,5 @@
 import imaps, { ImapSimple, ImapSimpleOptions } from 'imap-simple';
-import { simpleParser, ParsedMail } from 'mailparser';
+import { simpleParser } from 'mailparser';
 import { BinanceArticle } from './binance-rss';
 import { config } from '../config';
 
@@ -68,26 +68,35 @@ export class EmailTrigger {
 
             for (const item of messages) {
                 // Parse the email body
-                const all = item.parts.find(part => part.which === '')?.body;
+                const all = item.parts.find((part: { which?: string; body?: string }) => part.which === '')?.body;
                 if (!all) continue;
 
                 const mail = await simpleParser(all);
+                const sender = this.getSender(mail.from?.value[0]?.address);
+                const subject = (mail.subject || '').trim();
 
-                // Security check: Only accept from specific sender if configured?
-                // For now, assume the email account is private dedicated to the bot
-                // Or check sender
-                if (config.adminEmail && mail.from?.value[0]?.address !== config.adminEmail) {
-                    console.warn(`[EmailTrigger] ⚠️ Creating article from unknown sender: ${mail.from?.text}`);
+                if (!this.shouldProcessEmail(sender, subject)) {
+                    console.log(`[EmailTrigger] ⏭️ Skipped email from "${sender}" subject "${subject.slice(0, 80)}"`);
+                    continue;
                 }
 
-                const title = mail.subject || 'Sin Título';
+                const title = this.cleanTitle(subject || 'Sin Título');
                 // Prefer plain text, fallback to html, or empty
                 const content = mail.text || mail.html || '';
+                if (!content || content.trim().length < 80) {
+                    console.log(`[EmailTrigger] ⏭️ Skipped short/empty email "${title}"`);
+                    continue;
+                }
                 // Summary is first 200 chars
                 const summary = content.substring(0, 300) + '...';
 
-                // Generate a unique ID based on message ID or timestamp
-                const id = item.attributes.uid.toString();
+                // Generate deterministic ID to avoid duplicates across retries/forwards
+                const id = this.buildStableId(
+                    mail.messageId || '',
+                    sender,
+                    title,
+                    item.attributes.uid?.toString() || ''
+                );
 
                 // Construct article
                 const article: BinanceArticle = {
@@ -134,5 +143,48 @@ export class EmailTrigger {
         }
 
         return articles;
+    }
+
+    private getSender(address?: string): string {
+        return (address || '').trim().toLowerCase();
+    }
+
+    private shouldProcessEmail(sender: string, subject: string): boolean {
+        const subjectLower = subject.toLowerCase();
+
+        if (config.adminEmail && sender !== config.adminEmail.toLowerCase()) {
+            return false;
+        }
+
+        if (config.emailAllowedSenders.length > 0 && !config.emailAllowedSenders.includes(sender)) {
+            return false;
+        }
+
+        if (config.emailBlockedSenders.includes(sender)) {
+            return false;
+        }
+
+        if (config.emailBlockedSubjectKeywords.some(keyword => keyword && subjectLower.includes(keyword))) {
+            return false;
+        }
+
+        if (config.emailSubjectPrefix) {
+            return subject.startsWith(config.emailSubjectPrefix);
+        }
+
+        return true;
+    }
+
+    private cleanTitle(title: string): string {
+        if (!config.emailSubjectPrefix) return title;
+        return title.startsWith(config.emailSubjectPrefix)
+            ? title.slice(config.emailSubjectPrefix.length).trim()
+            : title;
+    }
+
+    private buildStableId(messageId: string, sender: string, subject: string, fallbackUid: string): string {
+        const seed = messageId || `${sender}|${subject}` || fallbackUid;
+        const normalized = seed.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return `email-${normalized.slice(0, 80) || fallbackUid || Date.now().toString()}`;
     }
 }

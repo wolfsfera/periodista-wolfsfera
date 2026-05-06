@@ -42,6 +42,19 @@ export const config = {
     emailHost: process.env.EMAIL_HOST || 'imap.gmail.com',
     emailPort: parseInt(process.env.EMAIL_PORT || '993'),
     adminEmail: process.env.ADMIN_EMAIL || '', // To filter sender
+    emailAllowedSenders: (process.env.EMAIL_ALLOWED_SENDERS || '')
+        .split(',')
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean),
+    emailBlockedSenders: (process.env.EMAIL_BLOCKED_SENDERS || 'no-reply@mail.instagram.com,security@mail.instagram.com,notification@instagram.com,no-reply@facebookmail.com')
+        .split(',')
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean),
+    emailBlockedSubjectKeywords: (process.env.EMAIL_BLOCKED_SUBJECT_KEYWORDS || 'instagram,verification code,security code,new login,password reset,newsletter,notification,followed you,liked your,commented on')
+        .split(',')
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean),
+    emailSubjectPrefix: process.env.EMAIL_SUBJECT_PREFIX || '',
 
     // Feature flags
     get telegramEnabled() { return !!this.telegramBotToken && !!this.telegramChannelId; },

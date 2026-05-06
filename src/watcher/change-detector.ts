@@ -66,8 +66,9 @@ export class ChangeDetector {
         for (const article of articles) {
             // Check by ID and also by title hash to catch duplicates
             const titleKey = this.titleHash(article.title);
+            const urlKey = this.urlKey(article.url);
 
-            if (!this.seenData.articles[article.id] && !this.seenData.articles[titleKey]) {
+            if (!this.seenData.articles[article.id] && !this.seenData.articles[titleKey] && !this.seenData.articles[urlKey]) {
                 newArticles.push(article);
             }
         }
@@ -91,6 +92,11 @@ export class ChangeDetector {
 
             // Also store by title hash for cross-source dedup
             this.seenData.articles[titleKey] = {
+                title: article.title,
+                seenAt: new Date().toISOString(),
+                publishedAt: [],
+            };
+            this.seenData.articles[this.urlKey(article.url)] = {
                 title: article.title,
                 seenAt: new Date().toISOString(),
                 publishedAt: [],
@@ -127,7 +133,17 @@ export class ChangeDetector {
     }
 
     private titleHash(title: string): string {
-        const clean = title.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const normalizedTitle = title
+            .replace(/^\[user post\]\s*/i, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const clean = normalizedTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
         return `title-${clean.slice(0, 40)}`;
+    }
+
+    private urlKey(url?: string): string {
+        const normalized = (url || '').toLowerCase().replace(/[#?].*$/, '').trim();
+        if (!normalized) return 'url-empty';
+        return `url-${normalized}`;
     }
 }

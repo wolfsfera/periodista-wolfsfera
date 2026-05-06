@@ -158,6 +158,8 @@ class RobotPeriodista {
      */
     private async processArticle(article: BinanceArticle): Promise<void> {
         console.log(`\n[Robot] 📰 Processing: ${article.title}`);
+        const isUserContent = article.category === 'user-content';
+        const isBinanceSource = !isUserContent;
 
         // Scrape full body if not already available
         if (!article.fullBody) {
@@ -192,21 +194,23 @@ class RobotPeriodista {
             );
         }
 
-        // X only gets important news (score >= 7)
-        if (content.twitter && config.xEnabled && relevance.publishToX) {
+        // X gets all Binance news; email/user-content keeps relevance guardrails
+        const publishToX = isBinanceSource ? true : relevance.publishToX;
+        if (content.twitter && config.xEnabled && publishToX) {
             this.queue.enqueue('twitter', () =>
                 postTwitterThread(content, images.twitter)
             );
-        } else if (config.xEnabled && !relevance.publishToX) {
+        } else if (config.xEnabled && !publishToX) {
             console.log(`[Robot] ⏭️  X skipped (score ${relevance.score}/10): ${relevance.reason}`);
         }
 
-        // LinkedIn only gets major strategic news (score >= 8)
-        if (content.linkedin && config.linkedinEnabled && relevance.publishToLinkedin) {
+        // LinkedIn gets all Binance news; email/user-content keeps relevance guardrails
+        const publishToLinkedIn = isBinanceSource ? true : relevance.publishToLinkedin;
+        if (content.linkedin && config.linkedinEnabled && publishToLinkedIn) {
             this.queue.enqueue('linkedin', () =>
                 postLinkedIn(content, images.linkedin)
             );
-        } else if (config.linkedinEnabled && !relevance.publishToLinkedin) {
+        } else if (config.linkedinEnabled && !publishToLinkedIn) {
             console.log(`[Robot] ⏭️  LinkedIn skipped (score ${relevance.score}/10)`);
         }
     }
