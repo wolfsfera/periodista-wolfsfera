@@ -11,17 +11,17 @@ export interface BinanceArticle {
     fullBody?: string;
 }
 
+// ── Fuentes RSS con autoridad crypto ─────────────────────────────────────────
 const RSS_FEEDS = [
-    {
-        url: 'https://www.binance.com/en/feed/rss',
-        category: 'feed',
-    },
-];
-
-// Binance announcement page URL patterns
-const ANNOUNCEMENT_URLS = [
-    'https://www.binance.com/en/support/announcement/new-cryptocurrency-listing',
-    'https://www.binance.com/en/support/announcement',
+    // Medios de referencia global
+    { url: 'https://cointelegraph.com/rss',                         category: 'cointelegraph' },
+    { url: 'https://www.coindesk.com/arc/outboundfeeds/rss/',       category: 'coindesk' },
+    { url: 'https://decrypt.co/feed',                               category: 'decrypt' },
+    { url: 'https://bitcoinist.com/feed/',                          category: 'bitcoinist' },
+    // Binance blog oficial (diferente al RSS roto)
+    { url: 'https://www.binance.com/en/blog/rss',                   category: 'binance-blog' },
+    // Agregador neutral
+    { url: 'https://cryptopanic.com/news/rss/',                     category: 'cryptopanic' },
 ];
 
 const parser = new RssParser({
@@ -33,9 +33,9 @@ const parser = new RssParser({
 });
 
 /**
- * Fetch articles from Binance RSS feeds
+ * Fetch articles from all configured RSS feeds
  */
-export async function fetchBinanceRSS(): Promise<BinanceArticle[]> {
+export async function fetchCryptoNewsFeeds(): Promise<BinanceArticle[]> {
     const articles: BinanceArticle[] = [];
 
     for (const feed of RSS_FEEDS) {
@@ -46,18 +46,14 @@ export async function fetchBinanceRSS(): Promise<BinanceArticle[]> {
             for (const item of result.items) {
                 if (!item.title || !item.link) continue;
 
-                // Create a unique ID from the URL
                 const id = Buffer.from(item.link).toString('base64').slice(0, 32);
 
-                // Extract image from content or media
                 let imageUrl = '';
                 if (item.enclosure?.url) {
                     imageUrl = item.enclosure.url;
                 } else if (item['media:content']?.['$']?.url) {
                     imageUrl = item['media:content']['$'].url;
                 }
-
-                // Try to extract image from content HTML
                 if (!imageUrl && item.content) {
                     const imgMatch = item.content.match(/<img[^>]+src="([^"]+)"/);
                     if (imgMatch) imageUrl = imgMatch[1];
@@ -74,7 +70,7 @@ export async function fetchBinanceRSS(): Promise<BinanceArticle[]> {
                 });
             }
 
-            console.log(`[Watcher] ✅ Got ${result.items.length} articles from RSS`);
+            console.log(`[Watcher] ✅ ${result.items.length} articles from ${feed.category}`);
         } catch (error) {
             console.error(`[Watcher] ❌ RSS error for ${feed.url}:`, error);
         }
@@ -84,8 +80,7 @@ export async function fetchBinanceRSS(): Promise<BinanceArticle[]> {
 }
 
 /**
- * Fetch announcements from Binance's public API endpoint
- * This is a more reliable source for new listings specifically
+ * Fetch Binance announcements from their public API (listings, etc.)
  */
 export async function fetchBinanceAnnouncements(): Promise<BinanceArticle[]> {
     const articles: BinanceArticle[] = [];
@@ -104,9 +99,7 @@ export async function fetchBinanceAnnouncements(): Promise<BinanceArticle[]> {
             }
         );
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json() as {
             data?: {
@@ -131,11 +124,11 @@ export async function fetchBinanceAnnouncements(): Promise<BinanceArticle[]> {
                 url: `https://www.binance.com/en/support/announcement/${item.code}`,
                 summary: item.body?.replace(/<[^>]*>/g, '').slice(0, 300) || '',
                 date: new Date(item.releaseDate).toISOString(),
-                category: 'listing',
+                category: 'binance-listing',
             });
         }
 
-        console.log(`[Watcher] ✅ Got ${catalogArticles.length} announcements`);
+        console.log(`[Watcher] ✅ ${catalogArticles.length} Binance announcements`);
     } catch (error) {
         console.error('[Watcher] ❌ Announcements API error:', error);
     }
@@ -144,19 +137,19 @@ export async function fetchBinanceAnnouncements(): Promise<BinanceArticle[]> {
 }
 
 /**
- * Fetch articles from all Binance sources
+ * Fetch from all sources — mantiene compatibilidad con index.ts
  */
 export async function fetchAllBinanceArticles(): Promise<BinanceArticle[]> {
-    const [rssArticles, announcements] = await Promise.all([
-        fetchBinanceRSS(),
+    const [newsArticles, announcements] = await Promise.all([
+        fetchCryptoNewsFeeds(),
         fetchBinanceAnnouncements(),
     ]);
 
-    // Merge and deduplicate by title similarity
+    // Deduplicar por título
     const seen = new Set<string>();
     const all: BinanceArticle[] = [];
 
-    for (const article of [...announcements, ...rssArticles]) {
+    for (const article of [...announcements, ...newsArticles]) {
         const key = article.title.toLowerCase().trim();
         if (!seen.has(key)) {
             seen.add(key);
