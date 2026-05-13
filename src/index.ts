@@ -2,6 +2,9 @@ console.log(' [BOOT] Starting... ENV Check:');
 console.log(' [BOOT] TELEGRAM_BOT_TOKEN:', process.env.TELEGRAM_BOT_TOKEN ? '✅ (Present)' : '❌ (MISSING)');
 console.log(' [BOOT] GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? '✅ (Present)' : '❌ (MISSING)');
 console.log(' [BOOT] WOLFSFERA_CMS_SECRET:', process.env.WOLFSFERA_CMS_SECRET ? '✅ (Present)' : '❌ (MISSING)');
+console.log(' [BOOT] X_API_KEY:', process.env.X_API_KEY ? '✅ (Present)' : '❌ (MISSING)');
+console.log(' [BOOT] X_ACCESS_TOKEN:', process.env.X_ACCESS_TOKEN ? '✅ (Present)' : '❌ (MISSING)');
+console.log(' [BOOT] TZ:', process.env.TZ || '⚠️  No configurada (usar Europe/Madrid)');
 
 import { config } from './config';
 import { fetchAllBinanceArticles, BinanceArticle } from './watcher/binance-rss';
@@ -13,9 +16,10 @@ import { scoreRelevance } from './editor/relevance-filter';
 import { ImageProcessor } from './visualizer/image-processor';
 import { PublicationQueue } from './herald/queue';
 import { sendTelegramMessage, testTelegramConnection } from './herald/telegram-bot';
-import { postTwitterThread, testTwitterConnection } from './herald/twitter-client';
+import { testTwitterConnection } from './herald/twitter-client';
 import { postLinkedIn, testLinkedInConnection } from './herald/linkedin-client';
 import { createCmsStub, generateSlug } from './cms/create-stub';
+import { XScheduler } from './herald/x-scheduler';
 
 import http from 'http';
 
@@ -44,7 +48,8 @@ class RobotPeriodista {
     private editor: GeminiProcessor;
     private visualizer: ImageProcessor;
     private queue: PublicationQueue;
-    private emailTrigger: EmailTrigger; // Added
+    private emailTrigger: EmailTrigger;
+    private xScheduler: XScheduler;  // 🆕 Sistema editorial X
     private running = false;
     private cycleCount = 0;
 
@@ -53,7 +58,8 @@ class RobotPeriodista {
         this.editor = new GeminiProcessor();
         this.visualizer = new ImageProcessor();
         this.queue = new PublicationQueue();
-        this.emailTrigger = new EmailTrigger(); // Added
+        this.emailTrigger = new EmailTrigger();
+        this.xScheduler = new XScheduler();
     }
 
     /**
@@ -69,7 +75,7 @@ class RobotPeriodista {
         // Show enabled platforms
         console.log('\n📡 Platforms:');
         console.log(`   Telegram: ${config.telegramEnabled ? '✅ ACTIVE' : '❌ Not configured'}`);
-        console.log(`   X/Twitter: ${config.xEnabled ? '✅ ACTIVE' : '⏸️  Waiting for API keys'}`);
+        console.log(`   X/Twitter: ${config.xEnabled ? '✅ ACTIVE (scheduler editorial 8h/14h/21h)' : '❌ Faltan X_API_KEY / X_ACCESS_TOKEN en Railway'}`);
         console.log(`   LinkedIn: ${config.linkedinEnabled ? '✅ ACTIVE' : '⏸️  Waiting for API keys'}`);
         console.log(`   CMS Stubs: ${config.cmsEnabled ? '✅ ACTIVE' : '⏸️  Waiting for secret'}`);
         console.log(`   Email Trigger: ${config.emailEnabled ? '✅ ACTIVE' : '❌ Not configured'}`); // Added email log
@@ -139,18 +145,22 @@ class RobotPeriodista {
             await this.processArticle(article);
         }
 
-        // 4. EXECUTE the publication queue
+        // 5. EXECUTE the publication queue (Telegram + LinkedIn)
         await this.queue.process();
 
-        // 5. MARK articles as seen
+        // 6. CHECK X scheduler — publica si toca franja horaria
+        await this.xScheduler.checkAndPublishSlot();
+
+        // 7. MARK articles as seen
         this.detector.markSeen(newArticles);
 
-        // 6. CLEANUP old images
+        // 8. CLEANUP old images
         this.visualizer.cleanup();
 
         // Stats
-        const stats = this.detector.getStats();
-        console.log(`[Robot] 📊 Total processed: ${stats.totalProcessed} | Queue: ${this.queue.getStats().dailyCount}/${config.maxTweetsPerDay}`);
+        const stats     = this.detector.getStats();
+        const xStats    = this.xScheduler.getStats();
+        console.log(`[Robot] 📊 Processed: ${stats.totalProcessed} | Telegram queue: ${this.queue.getStats().dailyCount}/${config.maxTweetsPerDay} | X pool: ${xStats.poolSize} candidatos`);
     }
 
     /**
@@ -187,25 +197,29 @@ class RobotPeriodista {
             article.id.replace(/[^a-z0-9]/gi, '_').slice(0, 30)
         );
 
-        // Queue publications — Telegram gets EVERYTHING
+        // ── TELEGRAM: recibe TODO en tiempo real ──────────────────────────────
         if (content.telegram && config.telegramEnabled) {
             this.queue.enqueue('telegram', () =>
                 sendTelegramMessage(content, images.telegram)
             );
         }
 
-        // X gets all Binance news; email/user-content keeps relevance guardrails
-        const publishToX = isBinanceSource ? true : relevance.publishToX;
-        if (content.twitter && config.xEnabled && publishToX) {
-            this.queue.enqueue('twitter', () =>
-                postTwitterThread(content, images.twitter)
+        // ── X/TWITTER: va al pool del scheduler editorial ────────────────────
+        // Solo artículos con score >= 7 entran; se publican en 3 franjas (8h/14h/21h)
+        if (content.twitter) {
+            this.xScheduler.addCandidate(
+                article.id,
+                article.title,
+                relevance.score,
+                relevance.category,
+                article.category,
+                content,
+                images.twitter,
             );
-        } else if (config.xEnabled && !publishToX) {
-            console.log(`[Robot] ⏭️  X skipped (score ${relevance.score}/10): ${relevance.reason}`);
         }
 
-        // LinkedIn gets all Binance news; email/user-content keeps relevance guardrails
-        const publishToLinkedIn = isBinanceSource ? true : relevance.publishToLinkedin;
+        // ── LINKEDIN: filtro de relevancia (score >= 8) ───────────────────────
+        const publishToLinkedIn = relevance.publishToLinkedin;
         if (content.linkedin && config.linkedinEnabled && publishToLinkedIn) {
             this.queue.enqueue('linkedin', () =>
                 postLinkedIn(content, images.linkedin)
