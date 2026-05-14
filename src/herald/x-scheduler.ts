@@ -60,7 +60,7 @@ const SLOTS = [
     {
         name: 'evening'   as const,
         hourStart: 20,
-        hourEnd: 23,
+        hourEnd: 24,
         label: '🌙 Tarde-noche',
         strategy: 'freshest-best' as const,
     },
