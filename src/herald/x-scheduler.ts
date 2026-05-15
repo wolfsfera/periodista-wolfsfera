@@ -1,16 +1,13 @@
 /**
- * 🐺 WOLFSFERA — X/Twitter Editorial Scheduler
+ * 🐺 WOLFSFERA — X/Twitter Quality Publisher
  *
- * Publica en X en 3 franjas horarias al día:
- *   - Mañana     (08:00 – 09:59 hora local): mejor score del pool
- *   - Tarde      (14:00 – 15:59 hora local): segundo mejor del pool
- *   - Tarde-noche(20:00 – 21:59 hora local): la más FRESCA + mejor score
+ * Publica en X cuando llega una noticia con score >= 7, sin restricción horaria.
+ * Límites:
+ *   - Máximo 5 tweets al día
+ *   - Mínimo 2 horas entre tweets (evita ráfagas)
+ *   - Score mínimo 7/10 para entrar al pool
  *
- * Solo artículos con relevance score >= 7 entran al pool.
  * Telegram sigue recibiendo todo en tiempo real (sin cambios).
- *
- * NOTA: Railway corre en UTC. Configura TZ=Europe/Madrid en las env vars
- * para que los horarios sean correctos.
  */
 
 import fs from 'fs';
@@ -27,81 +24,50 @@ export interface XCandidate {
     score: number;
     category: string;
     source: string;
-    /** Solo guardamos la parte de twitter + imagen para no inflar el JSON */
     twitterContent: Pick<ProcessedContent, 'twitter'>;
     imagePath?: string;
     addedAt: string; // ISO timestamp
 }
 
-interface DailySlots {
-    date: string;       // YYYY-MM-DD (hora local)
-    morning: boolean;
-    afternoon: boolean;
-    evening: boolean;
+interface PublishState {
+    date: string;        // YYYY-MM-DD
+    dailyCount: number;  // Tweets publicados hoy
+    lastPublishedAt: string | null; // ISO timestamp del último tweet
 }
 
-// ─── Slot definitions ────────────────────────────────────────────────────────
+// ─── Configuración ────────────────────────────────────────────────────────────
 
-const SLOTS = [
-    {
-        name: 'morning'   as const,
-        hourStart: 8,
-        hourEnd: 10,
-        label: '🌅 Mañana',
-        strategy: 'best-score' as const,
-    },
-    {
-        name: 'afternoon' as const,
-        hourStart: 14,
-        hourEnd: 16,
-        label: '☀️  Tarde',
-        strategy: 'best-score' as const,
-    },
-    {
-        name: 'evening'   as const,
-        hourStart: 20,
-        hourEnd: 24,
-        label: '🌙 Tarde-noche',
-        strategy: 'freshest-best' as const,
-    },
-];
+const MAX_DAILY        = 5;                    // Máximo tweets por día
+const MIN_GAP_MS       = 2 * 60 * 60 * 1000;  // 2 horas entre tweets
+const MIN_SCORE        = 7;                    // Score mínimo para X
 
 // ─── File paths ───────────────────────────────────────────────────────────────
 
 const CANDIDATES_FILE = path.resolve(config.dataDir, 'x-candidates.json');
-const SLOTS_FILE      = path.resolve(config.dataDir, 'x-slots.json');
-
-const MIN_SCORE = 7; // Mínimo para entrar al pool de X
+const STATE_FILE      = path.resolve(config.dataDir, 'x-state.json');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function todayLocalString(): string {
-    // Respeta TZ env var si está configurada en Railway
     return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
-}
-
-function localHour(): number {
-    return new Date().getHours();
 }
 
 // ─── XScheduler ──────────────────────────────────────────────────────────────
 
 export class XScheduler {
     private candidates: XCandidate[] = [];
-    private slots: DailySlots;
+    private state: PublishState;
 
     constructor() {
         this.candidates = this.loadCandidates();
-        this.slots = this.loadSlots();
-        console.log(`[XScheduler] 🗂️  Pool cargado: ${this.candidates.length} candidatos`);
-        console.log(`[XScheduler] 📅 Slots hoy (${todayLocalString()}): mañana=${this.slots.morning} tarde=${this.slots.afternoon} noche=${this.slots.evening}`);
+        this.state = this.loadState();
+        console.log(`[XScheduler] 🗂️  Pool: ${this.candidates.length} candidatos | Hoy: ${this.state.dailyCount}/${MAX_DAILY} tweets`);
     }
 
     // ── API pública ───────────────────────────────────────────────────────────
 
     /**
-     * Añade un artículo al pool de candidatos para X.
-     * Solo se acepta si score >= MIN_SCORE (7).
+     * Añade un artículo al pool si score >= MIN_SCORE.
      */
     addCandidate(
         id: string,
@@ -128,11 +94,7 @@ export class XScheduler {
         }
 
         const candidate: XCandidate = {
-            id,
-            title,
-            score,
-            category,
-            source,
+            id, title, score, category, source,
             twitterContent: { twitter: content.twitter },
             imagePath,
             addedAt: new Date().toISOString(),
@@ -144,99 +106,84 @@ export class XScheduler {
     }
 
     /**
-     * Comprueba si toca publicar en algún slot y lanza si es así.
+     * Publica si hay candidatos y se cumplen los límites.
      * Llamar en cada ciclo del robot.
      */
-    async checkAndPublishSlot(): Promise<void> {
+    async checkAndPublish(): Promise<void> {
         if (!config.xEnabled) return;
 
         const today = todayLocalString();
-        const hour  = localHour();
 
-        // Reset si es un nuevo día
-        if (this.slots.date !== today) {
-            this.slots = { date: today, morning: false, afternoon: false, evening: false };
-            this.saveSlots();
-            console.log(`[XScheduler] 🔄 Nuevo día (${today}) — slots reiniciados`);
+        // Reset contador si es un nuevo día
+        if (this.state.date !== today) {
+            this.state = { date: today, dailyCount: 0, lastPublishedAt: null };
+            this.saveState();
+            console.log(`[XScheduler] 🔄 Nuevo día (${today}) — contador reiniciado`);
         }
 
-        for (const slot of SLOTS) {
-            // ¿Ya se publicó hoy en este slot?
-            if (this.slots[slot.name]) continue;
+        // ¿Límite diario alcanzado?
+        if (this.state.dailyCount >= MAX_DAILY) {
+            console.log(`[XScheduler] 🛑 Límite diario alcanzado (${MAX_DAILY} tweets)`);
+            return;
+        }
 
-            // ¿Estamos dentro de la ventana horaria?
-            if (hour < slot.hourStart || hour >= slot.hourEnd) continue;
-
-            console.log(`[XScheduler] ${slot.label} slot activo (hora ${hour}:xx)`);
-
-            const candidate = this.pickCandidate(slot.strategy);
-            if (!candidate) {
-                console.log(`[XScheduler] 📭 Sin candidatos para ${slot.label} — esperando próximo ciclo`);
-                continue;
+        // ¿Han pasado 2 horas desde el último tweet?
+        if (this.state.lastPublishedAt) {
+            const elapsed = Date.now() - new Date(this.state.lastPublishedAt).getTime();
+            if (elapsed < MIN_GAP_MS) {
+                const waitMin = Math.ceil((MIN_GAP_MS - elapsed) / 60000);
+                console.log(`[XScheduler] ⏳ Próximo tweet en ${waitMin} min (gap mínimo 2h)`);
+                return;
             }
+        }
 
-            console.log(`[XScheduler] 🚀 Publicando en X [${slot.label}]: "${candidate.title.slice(0, 70)}"`);
-            console.log(`[XScheduler]    Score: ${candidate.score}/10 | Fuente: ${candidate.source} | Añadido: ${candidate.addedAt}`);
+        // ¿Hay candidatos?
+        if (this.candidates.length === 0) return;
 
-            try {
-                // Reconstruir ProcessedContent mínimo para postTwitterThread
-                const minimalContent = candidate.twitterContent as ProcessedContent;
-                await postTwitterThread(minimalContent, candidate.imagePath);
+        // Elegir el mejor candidato (mayor score, y en empate el más reciente)
+        const candidate = [...this.candidates].sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return b.addedAt.localeCompare(a.addedAt);
+        })[0];
 
-                this.slots[slot.name] = true;
-                this.saveSlots();
-                this.removeCandidateById(candidate.id);
+        console.log(`[XScheduler] 🚀 Publicando en X: "${candidate.title.slice(0, 70)}"`);
+        console.log(`[XScheduler]    Score: ${candidate.score}/10 | Fuente: ${candidate.source} | Añadido: ${candidate.addedAt}`);
 
-                console.log(`[XScheduler] ✅ Slot ${slot.label} completado`);
-            } catch (error) {
-                console.error(`[XScheduler] ❌ Error publicando slot ${slot.label}:`, error);
-            }
+        try {
+            const minimalContent = candidate.twitterContent as ProcessedContent;
+            await postTwitterThread(minimalContent, candidate.imagePath);
 
-            break; // Solo un slot por ciclo
+            this.state.dailyCount++;
+            this.state.lastPublishedAt = new Date().toISOString();
+            this.saveState();
+            this.removeCandidateById(candidate.id);
+
+            console.log(`[XScheduler] ✅ Publicado (${this.state.dailyCount}/${MAX_DAILY} hoy) | Pool restante: ${this.candidates.length}`);
+        } catch (error) {
+            console.error(`[XScheduler] ❌ Error publicando:`, error);
         }
     }
 
     getStats() {
         return {
             poolSize: this.candidates.length,
-            slots: this.slots,
-            nextCandidates: this.candidates
-                .sort((a, b) => b.score - a.score)
-                .slice(0, 3)
-                .map(c => ({ title: c.title.slice(0, 50), score: c.score, addedAt: c.addedAt })),
+            dailyCount: this.state.dailyCount,
+            maxDaily: MAX_DAILY,
+            lastPublishedAt: this.state.lastPublishedAt,
         };
     }
 
-    // ── Selección ─────────────────────────────────────────────────────────────
-
-    private pickCandidate(strategy: 'best-score' | 'freshest-best'): XCandidate | null {
-        if (this.candidates.length === 0) return null;
-
-        if (strategy === 'freshest-best') {
-            // Tarde-noche: prioriza noticias de las últimas 8h; si no hay, el mejor score general
-            const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
-            const recent = this.candidates.filter(c => c.addedAt >= eightHoursAgo);
-            const pool   = recent.length > 0 ? recent : this.candidates;
-            // Dentro del pool reciente, mejor score
-            return [...pool].sort((a, b) => b.score - a.score)[0];
-        }
-
-        // Mañana / Tarde: simplemente el mejor score del pool total
-        return [...this.candidates].sort((a, b) => b.score - a.score)[0];
-    }
+    // ── Privado ───────────────────────────────────────────────────────────────
 
     private removeCandidateById(id: string): void {
         this.candidates = this.candidates.filter(c => c.id !== id);
         this.saveCandidates();
     }
 
-    // ── Persistencia ──────────────────────────────────────────────────────────
-
     private loadCandidates(): XCandidate[] {
         try {
             if (fs.existsSync(CANDIDATES_FILE)) {
                 const data = JSON.parse(fs.readFileSync(CANDIDATES_FILE, 'utf-8'));
-                // Limpiar candidatos de más de 48h para no acumular
                 const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
                 return (data as XCandidate[]).filter(c => c.addedAt >= cutoff);
             }
@@ -249,17 +196,17 @@ export class XScheduler {
         fs.writeFileSync(CANDIDATES_FILE, JSON.stringify(this.candidates, null, 2));
     }
 
-    private loadSlots(): DailySlots {
+    private loadState(): PublishState {
         try {
-            if (fs.existsSync(SLOTS_FILE)) {
-                return JSON.parse(fs.readFileSync(SLOTS_FILE, 'utf-8'));
+            if (fs.existsSync(STATE_FILE)) {
+                return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
             }
         } catch { /* sin datos previos */ }
-        return { date: '', morning: false, afternoon: false, evening: false };
+        return { date: '', dailyCount: 0, lastPublishedAt: null };
     }
 
-    private saveSlots(): void {
-        fs.mkdirSync(path.dirname(SLOTS_FILE), { recursive: true });
-        fs.writeFileSync(SLOTS_FILE, JSON.stringify(this.slots, null, 2));
+    private saveState(): void {
+        fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+        fs.writeFileSync(STATE_FILE, JSON.stringify(this.state, null, 2));
     }
 }

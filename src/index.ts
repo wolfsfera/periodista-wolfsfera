@@ -148,8 +148,8 @@ class RobotPeriodista {
         // 5. EXECUTE the publication queue (Telegram + LinkedIn)
         await this.queue.process();
 
-        // 6. CHECK X scheduler — publica si toca franja horaria
-        await this.xScheduler.checkAndPublishSlot();
+        // 6. CHECK X scheduler — publica si hay candidato y cumple límites
+        await this.xScheduler.checkAndPublish();
 
         // 7. MARK articles as seen
         this.detector.markSeen(newArticles);
