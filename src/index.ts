@@ -135,6 +135,8 @@ class RobotPeriodista {
         const newArticles = this.detector.filterNew(allArticles);
         if (newArticles.length === 0) {
             console.log('[Robot] 📭 No new articles');
+            // Aun sin noticias nuevas, comprobar si toca publicar en X del pool
+            await this.xScheduler.checkAndPublish();
             return;
         }
 
