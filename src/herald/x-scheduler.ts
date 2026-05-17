@@ -39,7 +39,7 @@ interface PublishState {
 
 const MAX_DAILY        = 5;                    // Máximo tweets por día
 const MIN_GAP_MS       = 2 * 60 * 60 * 1000;  // 2 horas entre tweets
-const MIN_SCORE        = 7;                    // Score mínimo para X
+const MIN_SCORE        = 4;                    // Score mínimo para X
 
 // ─── File paths ───────────────────────────────────────────────────────────────
 
